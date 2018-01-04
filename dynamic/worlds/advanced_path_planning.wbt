@@ -3,7 +3,7 @@ WorldInfo {
   basicTimeStep 16
 }
 Viewpoint {
-  orientation -0.9147493824138018 0.3654317154502626 0.172317232790707 0.9519255543399353
+  orientation -0.8223131342098736 0.5142280391031223 0.24366089777822728 1.0455103448561347
   position 0.480859579263053 0.725979665904308 0.7484165829079932
 }
 DEF elisa Elisa3 {
@@ -71,9 +71,6 @@ DEF FLOOR Solid {
 SoccerBall {
   translation 0.12999999999999998 0.01 0.13999999999999999
   radius 0.01
-}
-EPuck_GPS {
-  name "e-puck(1)"
 }
 Shape {
   appearance Appearance {
@@ -228,4 +225,12 @@ E-puck {
       height 30
     }
   ]
+}
+Supervisor {
+  translation 0.13999999999999999 0 0
+  children [
+    DEF emitter Emitter {
+    }
+  ]
+  controller "supervisor_controller"
 }

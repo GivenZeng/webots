@@ -12,7 +12,7 @@
 #define PI 3.14159265358979
 #define LEFT 0
 #define RIGHT 1
-#define VERBOSE 1
+#define VERBOSE 0
 #define TIME_STEP 64
 #define MAP_WIDTH 0.42
 #define MAP_HEIGHT 0.30
@@ -136,7 +136,7 @@ static void set_speed(int l, int r)
      if(left_speed>6.28||right_speed>6.28){
       left_speed=left_speed/1.1;
       right_speed=right_speed/1.1;
-      printf("speed is %f,%f\n", left_speed,right_speed);
+      if(VERBOSE>0) printf("speed is %f,%f\n", left_speed,right_speed);
     }else{
       break;
     }
@@ -368,8 +368,8 @@ static float distance_to_ball_obstacle(float x, float y,int ballNum, float* vec_
     }
 
     float d = distance_to_segment(x, y,
-            ball_obstacles[BALL_NUM][i][0], ball_obstacles[BALL_NUM][i][1],
-            ball_obstacles[BALL_NUM][(i+1)%BALL_OBSTACLE_SIZE][0], ball_obstacles[BALL_NUM][(i+1)%BALL_OBSTACLE_SIZE][1],
+            ball_obstacles[ballNum][i][0], ball_obstacles[ballNum][i][1],
+            ball_obstacles[ballNum][(i+1)%BALL_OBSTACLE_SIZE][0], ball_obstacles[ballNum][(i+1)%BALL_OBSTACLE_SIZE][1],
             &cand_x, &cand_y);
 
     if (d != -1) {
@@ -467,7 +467,7 @@ static int run(void)
   } else {
     set_speed(0, 0);
     if (finished != 1) {
-      printf("Goal is reached.\n");
+      if(VERBOSE) printf("Goal is reached.\n");
       finished++;
     }
   }

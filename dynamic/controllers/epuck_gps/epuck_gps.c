@@ -5,16 +5,14 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <webots/receiver.h>
+
 #include "../../lib/odometry.h"
+
 
 #define PI 3.14159265358979
 #define LEFT 0
 #define RIGHT 1
 #define VERBOSE 1
-#define SHOW_SPEED 0
-#define SHOW_POSITION 0
-#define SHOW_ABSTACLE_POSITION 1
 #define TIME_STEP 64
 #define MAP_WIDTH 0.42
 #define MAP_HEIGHT 0.30
@@ -27,38 +25,12 @@ float obstacle[OBSTACLE_SIZE][2] = {
   {0.2,0.1}
 };
 
-//球用四个点围起来
-#define BALL_OBSTACLE_SIZE 4
-#define BALL_RADIS 0.005
-#define BALL_NUM 2
-float balls[BALL_NUM][2]={
-  {0.2,0.3},
-  {0.4,0.3}
-};
-float ball_obstacles[BALL_NUM][BALL_OBSTACLE_SIZE][2]={
-  {
-    {0.2-BALL_RADIS,0.3-BALL_RADIS},
-    {0.2+BALL_RADIS,0.3-BALL_RADIS},
-    {0.2+BALL_RADIS,0.3+BALL_RADIS},
-    {0.2-BALL_RADIS,0.3+BALL_RADIS}
-  },
-  {
-    {0.4-BALL_RADIS,0.3-BALL_RADIS},
-    {0.4+BALL_RADIS,0.3-BALL_RADIS},
-    {0.4+BALL_RADIS,0.3+BALL_RADIS},
-    {0.4-BALL_RADIS,0.3+BALL_RADIS}
-  }
-};
+#define ELISA_RADIS 0.02
 
-/*******************elisa data***********************/
-#define ELISA_OBSTACLE_SIZE 4
-#define ELISA_RADIS 0.015
-float elisa_position[2]={0.24,0.12};
-float elisa_obstacles[4][2];
 // wheel
 #define SPEED_UNIT   0.00628
 #define ENCODER_UNIT 159.23
-WbDeviceTag left_motor, right_motor, left_position_sensor, right_position_sensor,receiver;
+WbDeviceTag left_motor, right_motor, left_position_sensor, right_position_sensor;
 
 // the goal
 float goal_x = 0.36;
@@ -69,7 +41,7 @@ float k_att = 15.0;
 float k_rep = 10.0;
 
 // maximum distance of influence for the obstacles
-float rho_0 = 0.08;
+float rho_0 = 0.057;
 
 // speed and previous speed of the robot
 int speed[2]={0,0};
@@ -93,81 +65,9 @@ static float compute_force(float pos_x, float pos_y, float* force_x, float* forc
 static float distance_to_segment(float cx, float cy, float ax, float ay,
                                  float bx, float by, float* obs_x, float* obs_y);
 static float distance_to_obstacle(float x, float y, float* vec_x, float* vec_y);
-static float compute_force_of_all_obstacle(float pos_x, float pos_y, float* force_x, float* force_y);
-static float distance_to_ball_obstacle(float x, float y,int ballNum, float* vec_x, float* vec_y);
+static float distance_to_elisa(float x, float y, float* vec_x, float* vec_y);
 static int run(void);
 
-
-/***************************my code******************************/
-static void changeElisaObstacles(int x,int z);
-static float distance_to_elisa(float x, float y, float* vec_x, float* vec_y);
-static void getElisaPosition();
-
-static void getElisaPosition(){
-  if(wb_receiver_get_queue_length(receiver) > 0){
-    const float * data=wb_receiver_get_data(receiver);
-    if(VERBOSE>0&&SHOW_ABSTACLE_POSITION>0) printf("epuck get elisa's position:%g,%g\n",data[0],data[1]);
-    changeElisaObstacles(data[0],data[1]);
-    wb_receiver_next_packet(receiver);
-  }else{
-    if(VERBOSE>0&&SHOW_ABSTACLE_POSITION) printf("no data from elisa\n");
-  }
-}
-//计算正方形的四个点
-static void changeElisaObstacles(int x,int z){
-  elisa_position[0]=x,elisa_position[1]=z;
-  elisa_obstacles[0][0]=elisa_position[0]-ELISA_RADIS,elisa_obstacles[0][1]=elisa_position[1]-ELISA_RADIS;
-  elisa_obstacles[1][0]=elisa_position[0]+ELISA_RADIS,elisa_obstacles[1][1]=elisa_position[1]-ELISA_RADIS;
-  elisa_obstacles[2][0]=elisa_position[0]+ELISA_RADIS,elisa_obstacles[2][1]=elisa_position[1]+ELISA_RADIS;
-  elisa_obstacles[3][0]=elisa_position[0]-ELISA_RADIS,elisa_obstacles[3][1]=elisa_position[1]+ELISA_RADIS;
-}
-
-
-/*
-  计算点xy到elisa的距离，以及到达elisa的方向
-*/
-static float distance_to_elisa(float x, float y, float* vec_x, float* vec_y){
-  float dist = -1;
-  *vec_x = 0.0;
-  *vec_y = 0.0;
-  float cand_x = 0.0;
-  float cand_y = 0.0;
-  int i = 0;
-  int inObstacle = 1;
-
-  // for each segment of the obstacle
-  for (i = 0; i < ELISA_OBSTACLE_SIZE; i++) {
-    inObstacle = 1;
-
-    int ip = i+1;
-    if (ip > ELISA_OBSTACLE_SIZE) {
-      ip = 1;
-    }
-
-    float d = distance_to_segment(x, y,
-            elisa_obstacles[i][0], elisa_obstacles[i][1],
-            elisa_obstacles[(i+1)%ELISA_OBSTACLE_SIZE][0], elisa_obstacles[(i+1)%ELISA_OBSTACLE_SIZE][1],
-            &cand_x, &cand_y);
-
-    if (d != -1) {
-      inObstacle = 0;
-    }
-
-    if (d < dist || dist == -1) {
-      dist = d;
-      *vec_x = cand_x;
-      *vec_y = cand_y;
-    }
-  }
-
-  if (inObstacle == 1) {
-    dist = -1;
-    *vec_x = 0.0;
-    *vec_y = 0.0;
-  }
-
-  return dist;
-}
 static void init_display(){
   int i,j,color,pot;
   float fx, fy;
@@ -209,22 +109,11 @@ static void set_speed(int l, int r)
   pspeed[RIGHT] = speed[RIGHT];
   speed[LEFT] = l;
   speed[RIGHT] = r;
-  float left_speed=SPEED_UNIT * speed[LEFT];
-  float right_speed=SPEED_UNIT * speed[RIGHT];
-  while(true){
-     if(left_speed>6.28||right_speed>6.28){
-      left_speed=left_speed/1.1;
-      right_speed=right_speed/1.1;
-      if(VERBOSE>0&&SHOW_SPEED>0) printf("speed is %f,%f\n", left_speed,right_speed);
-    }else{
-      break;
-    }
-  }
-  if (pspeed[LEFT] != speed[LEFT] || pspeed[RIGHT] != speed[RIGHT]) {
-    wb_motor_set_velocity(left_motor, left_speed  );
-    wb_motor_set_velocity(right_motor, right_speed);
-  }
 
+  if (pspeed[LEFT] != speed[LEFT] || pspeed[RIGHT] != speed[RIGHT]) {
+    wb_motor_set_velocity(left_motor, SPEED_UNIT * speed[LEFT]);
+    wb_motor_set_velocity(right_motor, SPEED_UNIT * speed[RIGHT]);
+  }
 }
 
 
@@ -253,60 +142,6 @@ static float compute_force(float pos_x, float pos_y, float* force_x, float* forc
   pot += k_att * d_goal * d_goal;
 
   // repulsive part (avoid obstacles)
-  if (d < rho_0 && d != 0 && d != -1) {
-    tx = k_rep * (1/d - 1/rho_0) / d*d * (-vec_x);
-    ty = k_rep * (1/d - 1/rho_0) / d*d * (-vec_y);
-    f_x += tx;
-    f_y += ty;
-
-    pot += k_rep * (1/d - 1/rho_0) * (1/d - 1/rho_0);
-  }
-
-  *force_x = f_x;
-  *force_y = f_y;
-
-  return pot;
-}
-static float compute_force_of_all_obstacle(float pos_x, float pos_y, float* force_x, float* force_y)
-{
-  /*
-   * TODO: Complete the function such that we can compute the potenatial
-   * and the applied force on the robot.
-   */
-
-  float vec_x, vec_y, tx, ty;
-  float f_x = 0.0;
-  float f_y = 0.0;
-  float pot = 0.0;
-  float d_goal = sqrt((goal_x-pos_x)*(goal_x-pos_x) + (goal_y-pos_y)*(goal_y-pos_y));
-  // attractive part (go to the goal)
-  f_x += k_att * (goal_x - pos_x) / d_goal;
-  f_y += k_att * (goal_y - pos_y) / d_goal;
-  pot += k_att * d_goal * d_goal;
-
-  // repulsive part (avoid obstacles)
-  float d = distance_to_obstacle(pos_x, pos_y, &vec_x, &vec_y);
-  if (d < rho_0 && d != 0 && d != -1) {
-    tx = k_rep * (1/d - 1/rho_0) / d*d * (-vec_x);
-    ty = k_rep * (1/d - 1/rho_0) / d*d * (-vec_y);
-    f_x += tx;
-    f_y += ty;
-
-    pot += k_rep * (1/d - 1/rho_0) * (1/d - 1/rho_0);
-  }
-  for(int i=0;i<BALL_NUM;i++){
-    float d_to_ball=distance_to_ball_obstacle(pos_x,pos_y,i,&vec_x,&vec_y);
-    if(d_to_ball<rho_0&&d_to_ball!=0&&d!=-1){
-        tx = k_rep * (1/d - 1/rho_0) / d*d * (-vec_x);
-        ty = k_rep * (1/d - 1/rho_0) / d*d * (-vec_y);
-        f_x += tx;
-        f_y += ty;
-
-        pot += k_rep * (1/d - 1/rho_0) * (1/d - 1/rho_0);
-    }
-  }
-
-  d=distance_to_elisa(pos_x,pos_y,&vec_x,&vec_y);
   if (d < rho_0 && d != 0 && d != -1) {
     tx = k_rep * (1/d - 1/rho_0) / d*d * (-vec_x);
     ty = k_rep * (1/d - 1/rho_0) / d*d * (-vec_y);
@@ -436,52 +271,10 @@ static float distance_to_obstacle(float x, float y, float* vec_x, float* vec_y)
   return dist;
 }
 
-//计算x，y到球的距离以及到球的防线
-static float distance_to_ball_obstacle(float x, float y,int ballNum, float* vec_x, float* vec_y)
-{
-  float dist = -1;
-  *vec_x = 0.0;
-  *vec_y = 0.0;
-  float cand_x = 0.0;
-  float cand_y = 0.0;
-  int i = 0;
-  int inObstacle = 1;
-
-  // for each segment of the ball_obstacle
-  for (i = 0; i < BALL_OBSTACLE_SIZE; i++) {
-    inObstacle = 1;
-
-    int ip = i+1;
-    if (ip > BALL_OBSTACLE_SIZE) {
-      ip = 1;
-    }
-
-    float d = distance_to_segment(x, y,
-            ball_obstacles[ballNum][i][0], ball_obstacles[ballNum][i][1],
-            ball_obstacles[ballNum][(i+1)%BALL_OBSTACLE_SIZE][0], ball_obstacles[ballNum][(i+1)%BALL_OBSTACLE_SIZE][1],
-            &cand_x, &cand_y);
-
-    if (d != -1) {
-      inObstacle = 0;
-    }
-
-    if (d < dist || dist == -1) {
-      dist = d;
-      *vec_x = cand_x;
-      *vec_y = cand_y;
-    }
-  }
-
-  if (inObstacle == 1) {
-    dist = -1;
-    *vec_x = 0.0;
-    *vec_y = 0.0;
-  }
-
-  return dist;
+static float distance_to_elisa(float x, float y, float* vec_x, float* vec_y){
+  WbDeviceTag elisa = wb_robot_get_device("elisa");
+  float * position=elisa.getPosition();
 }
-
-
 /*
  * This function compute the difference of two angles
  */
@@ -535,10 +328,9 @@ static int run(void)
 
   float d_goal = sqrt(pow(goal_x - x, 2) + pow(goal_y - y, 2));
 
-  getElisaPosition();
-  if (d_goal > 0.005) {
-    compute_force_of_all_obstacle(x, y, &fx, &fy);
-    if (VERBOSE > 0&&SHOW_POSITION) printf("Current position is (%f,%f,%f), current force is (%f,%f)\n",x,y,theta,fx,fy);
+  if (d_goal > 0.002) {
+    compute_force(x, y, &fx, &fy);
+    if (VERBOSE > 0) printf("Current position is (%f,%f,%f), current force is (%f,%f)\n",x,y,theta,fx,fy);
     if (VERBOSE > 0) printf("Distance to goal is %f\n", d_goal);
 
     /*
@@ -557,7 +349,7 @@ static int run(void)
   } else {
     set_speed(0, 0);
     if (finished != 1) {
-      if(VERBOSE) printf("Goal is reached.\n");
+      printf("Goal is reached.\n");
       finished++;
     }
   }
@@ -571,14 +363,10 @@ static int run(void)
 int main()
 {
   wb_robot_init(); /* initialize the webots controller library */
-  changeElisaObstacles(elisa_position[0],elisa_position[1]);
+
   // get a handler to the motors and set target position to infinity (speed control).
   left_motor = wb_robot_get_device("left wheel motor");
   right_motor = wb_robot_get_device("right wheel motor");
-  
-  receiver = wb_robot_get_device("receiver");
-  wb_receiver_enable(receiver,TIME_STEP);
-
   wb_motor_set_position(left_motor, INFINITY);
   wb_motor_set_position(right_motor, INFINITY);
   wb_motor_set_velocity(left_motor, 0.0);

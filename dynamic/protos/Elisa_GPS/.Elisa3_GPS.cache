@@ -1,0 +1,8 @@
+Webots Proto Cache File version 1.3
+protoFileHash: ddf7ac02201e7db35bf7b71f3408668c
+containsDevices: 1
+baseType: Robot
+slotType: 
+parameters: translation,rotation,controller,controllerArgs,name,emitter_channel,receiver_channel,battery
+tags: 
+info: Elisa-3:\sminiature\sArduino\srobot\sby\sGCtronic\nThe\sElisa-3\sis\spowered\sby\san\sATmega\s2560\sprocessor\sand\sfeatures\sa\slarge\snumber\sof\ssensors.\nMore\sinfo\shere:\shttp://www.gctronic.com/doc/index.php/Elisa-3.\n
