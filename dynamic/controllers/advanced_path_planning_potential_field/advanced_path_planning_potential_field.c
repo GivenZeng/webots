@@ -15,6 +15,7 @@
 #define SHOW_SPEED 0
 #define SHOW_POSITION 0
 #define SHOW_ABSTACLE_POSITION 1
+#define SHOW_DISTANCE_TO_GOAL 0
 #define TIME_STEP 64
 #define MAP_WIDTH 0.42
 #define MAP_HEIGHT 0.30
@@ -29,7 +30,7 @@ float obstacle[OBSTACLE_SIZE][2] = {
 
 //球用四个点围起来
 #define BALL_OBSTACLE_SIZE 4
-#define BALL_RADIS 0.005
+#define BALL_RADIS 0.001
 #define BALL_NUM 2
 float balls[BALL_NUM][2]={
   {0.2,0.3},
@@ -52,7 +53,7 @@ float ball_obstacles[BALL_NUM][BALL_OBSTACLE_SIZE][2]={
 
 /*******************elisa data***********************/
 #define ELISA_OBSTACLE_SIZE 4
-#define ELISA_RADIS 0.015
+#define ELISA_RADIS 0.02
 float elisa_position[2]={0.24,0.12};
 float elisa_obstacles[4][2];
 // wheel
@@ -99,22 +100,35 @@ static int run(void);
 
 
 /***************************my code******************************/
-static void changeElisaObstacles(int x,int z);
+//在本处，z和y是等价的。因此有时候命名为y，有时为z。无论如何表示的是elisa的平面坐标
+static void changeElisaObstacles(float x,float z);
 static float distance_to_elisa(float x, float y, float* vec_x, float* vec_y);
 static void getElisaPosition();
 
+//获取elisa的位置
 static void getElisaPosition(){
-  if(wb_receiver_get_queue_length(receiver) > 0){
-    const float * data=wb_receiver_get_data(receiver);
-    if(VERBOSE>0&&SHOW_ABSTACLE_POSITION>0) printf("epuck get elisa's position:%g,%g\n",data[0],data[1]);
-    changeElisaObstacles(data[0],data[1]);
-    wb_receiver_next_packet(receiver);
-  }else{
-    if(VERBOSE>0&&SHOW_ABSTACLE_POSITION) printf("no data from elisa\n");
-  }
+  // while(wb_receiver_get_queue_length(receiver) > 0){
+  //   //读取平面坐标
+  //     const float * data=wb_receiver_get_data(receiver);
+  //     if(VERBOSE>0&&SHOW_ABSTACLE_POSITION>0)
+  //       printf("epuck get elisa's position:%g,%g\n",data[0],data[1]);
+  //     changeElisaObstacles(data[0],data[1]);
+  //     wb_receiver_next_packet(receiver);
+  // }
+
+  while (wb_receiver_get_queue_length(receiver) > 0) 
+    {
+        //接收robot的位置及角度消息
+        const double *a = wb_receiver_get_data(receiver);
+        if(VERBOSE>0&&SHOW_ABSTACLE_POSITION>0)
+          printf("epuck get elisa's position:%g,%g\n",a[0],a[1]);
+        changeElisaObstacles(a[0],a[1]);
+        wb_receiver_next_packet(receiver);
+     }
 }
-//计算正方形的四个点
-static void changeElisaObstacles(int x,int z){
+//计算正方形的四个点，这里使用的是逆时针 todo：统一改为顺时针
+static void changeElisaObstacles(float x,float z){
+  printf("the elisa position is%g,%g\n",x,z);
   elisa_position[0]=x,elisa_position[1]=z;
   elisa_obstacles[0][0]=elisa_position[0]-ELISA_RADIS,elisa_obstacles[0][1]=elisa_position[1]-ELISA_RADIS;
   elisa_obstacles[1][0]=elisa_position[0]+ELISA_RADIS,elisa_obstacles[1][1]=elisa_position[1]-ELISA_RADIS;
@@ -294,6 +308,7 @@ static float compute_force_of_all_obstacle(float pos_x, float pos_y, float* forc
 
     pot += k_rep * (1/d - 1/rho_0) * (1/d - 1/rho_0);
   }
+  //计算epuck到球的距离，计算力的影响
   for(int i=0;i<BALL_NUM;i++){
     float d_to_ball=distance_to_ball_obstacle(pos_x,pos_y,i,&vec_x,&vec_y);
     if(d_to_ball<rho_0&&d_to_ball!=0&&d!=-1){
@@ -305,7 +320,7 @@ static float compute_force_of_all_obstacle(float pos_x, float pos_y, float* forc
         pot += k_rep * (1/d - 1/rho_0) * (1/d - 1/rho_0);
     }
   }
-
+  //计算epuck到elisa的距离，并计算力的影响
   d=distance_to_elisa(pos_x,pos_y,&vec_x,&vec_y);
   if (d < rho_0 && d != 0 && d != -1) {
     tx = k_rep * (1/d - 1/rho_0) / d*d * (-vec_x);
@@ -535,11 +550,10 @@ static int run(void)
 
   float d_goal = sqrt(pow(goal_x - x, 2) + pow(goal_y - y, 2));
 
-  getElisaPosition();
   if (d_goal > 0.005) {
     compute_force_of_all_obstacle(x, y, &fx, &fy);
     if (VERBOSE > 0&&SHOW_POSITION) printf("Current position is (%f,%f,%f), current force is (%f,%f)\n",x,y,theta,fx,fy);
-    if (VERBOSE > 0) printf("Distance to goal is %f\n", d_goal);
+    if (VERBOSE > 0&&SHOW_DISTANCE_TO_GOAL) printf("Distance to goal is %f\n", d_goal);
 
     /*
      *  TODO: Write the robot control code.
@@ -577,7 +591,8 @@ int main()
   right_motor = wb_robot_get_device("right wheel motor");
   
   receiver = wb_robot_get_device("receiver");
-  wb_receiver_enable(receiver,TIME_STEP);
+  wb_receiver_set_channel(receiver, 6666);
+  wb_receiver_enable(receiver, TIME_STEP);
 
   wb_motor_set_position(left_motor, INFINITY);
   wb_motor_set_position(right_motor, INFINITY);
@@ -617,6 +632,15 @@ int main()
 
   /* main loop */
   while(wb_robot_step(TIME_STEP) != -1) {
+    getElisaPosition();
+    // while(wb_receiver_get_queue_length(receiver) > 0){
+    // //读取平面坐标
+    // const float * data=wb_receiver_get_data(receiver);
+    // if(VERBOSE>0&&SHOW_ABSTACLE_POSITION>0)
+    //   printf("epuck get elisa's position:%g,%g\n",data[0],data[1]);
+    // changeElisaObstacles(data[0],data[1]);
+    // wb_receiver_next_packet(receiver);
+    // }
     run();
   }
 
